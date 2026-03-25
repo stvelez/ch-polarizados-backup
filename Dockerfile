@@ -1,13 +1,13 @@
 FROM alpine:3.22 AS mysql-client
 
-RUN apk add --no-cache mysql-client mariadb-connector-c gnupg
+RUN apk add --no-cache mysql-client mariadb-connector-c gnupg su-exec
 
 FROM n8nio/n8n:2.13.2
 
 USER root
 
-# su-exec para cambiar de root a node después de corregir permisos del volumen
-RUN apk add --no-cache su-exec
+# su-exec copiado desde el stage Alpine (la imagen n8n no tiene apk)
+COPY --from=mysql-client /sbin/su-exec /sbin/su-exec
 
 # MySQL client binaries and libs
 COPY --from=mysql-client /usr/bin/mysqldump /usr/bin/mysqldump
