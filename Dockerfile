@@ -2,9 +2,12 @@ FROM alpine:3.22 AS mysql-client
 
 RUN apk add --no-cache mysql-client mariadb-connector-c gnupg
 
-FROM n8nio/n8n:latest
+FROM n8nio/n8n:2.13.2
 
 USER root
+
+# su-exec para cambiar de root a node después de corregir permisos del volumen
+RUN apk add --no-cache su-exec
 
 # MySQL client binaries and libs
 COPY --from=mysql-client /usr/bin/mysqldump /usr/bin/mysqldump
@@ -25,4 +28,8 @@ COPY --from=mysql-client /usr/lib/libassuan.so.0 /usr/lib/libassuan.so.0
 
 RUN chmod +x /usr/bin/mysqldump /usr/bin/gpg /usr/bin/gpg2
 
-USER node
+# Entrypoint que corrige permisos del volumen antes de iniciar n8n
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
