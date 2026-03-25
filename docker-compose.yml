@@ -1,0 +1,43 @@
+services:
+  n8n:
+    build: .
+    container_name: n8n-ch-polarizados
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=America/Bogota
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODES_EXCLUDE=["n8n-nodes-base.localFileTrigger"]
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - BACKUP_DIR=/home/node/.n8n-files/backups
+
+      # Credenciales MySQL Railway
+      - MYSQL_HOST=maglev.proxy.rlwy.net
+      - MYSQL_PORT=43312
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=railway
+      - MYSQL_SSL=${MYSQL_SSL:-true}
+      - MYSQL_SSL_VERIFY_SERVER_CERT=${MYSQL_SSL_VERIFY_SERVER_CERT:-false}
+      - MYSQL_SSL_CA=${MYSQL_SSL_CA:-}
+
+      # Notificaciones Telegram
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+
+      # Google Drive (ID de la carpeta destino en Drive)
+      - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID}
+
+      # Cifrado GPG (opcional — dejar vacío para desactivar)
+      - GPG_PASSPHRASE=${GPG_PASSPHRASE:-}
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./backups:/home/node/.n8n-files/backups
+      - ./scripts:/scripts:ro
+
+volumes:
+  n8n_data:

@@ -1,0 +1,106 @@
+{
+  "name": "CH Polarizados - MySQL Backup",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24,
+              "triggerAtHour": 2
+            }
+          ]
+        }
+      },
+      "name": "Cron - Daily 2AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst timestamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;\n\nreturn [{\n  json: {\n    timestamp,\n    backupFile: `/backups/ch_polarizados_backup_${timestamp}.sql.gz`,\n    startedAt: now.toISOString()\n  }\n}];"
+      },
+      "name": "Prepare Timestamp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "command": "sh /scripts/backup-mysql-to-pg.sh"
+      },
+      "name": "Run Backup Script",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json.stdout || '';\nconst lines = output.split('\\n');\nconst result = {};\n\nfor (const line of lines) {\n  if (line.startsWith('BACKUP_FILE=')) result.backupFile = line.split('=')[1];\n  if (line.startsWith('BACKUP_SIZE=')) result.backupSize = line.split('=')[1];\n  if (line.startsWith('TIMESTAMP=')) result.timestamp = line.split('=')[1];\n}\n\nresult.success = !$input.first().json.stderr || $input.first().json.stderr.length === 0;\nresult.stdout = output;\n\nreturn [{ json: result }];"
+      },
+      "name": "Parse Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ✅ Backup exitoso - podés conectar aquí Telegram, email, Slack, etc.\n// Descomentar y configurar según necesites\n\nconst { backupFile, backupSize, timestamp } = $input.first().json;\nconsole.log(`✅ Backup OK: ${backupFile} (${backupSize})`);\n\nreturn [{\n  json: {\n    message: `✅ Backup CH Polarizados completado`,\n    file: backupFile,\n    size: backupSize,\n    timestamp\n  }\n}];"
+      },
+      "name": "Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ❌ Backup falló - notificar error\nconst { stdout } = $input.first().json;\nconsole.error(`❌ Backup fallido: ${stdout}`);\n\nreturn [{\n  json: {\n    message: `❌ Error en backup CH Polarizados`,\n    error: stdout,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 400]
+    }
+  ],
+  "connections": {
+    "Cron - Daily 2AM": {
+      "main": [[{ "node": "Prepare Timestamp", "type": "main", "index": 0 }]]
+    },
+    "Prepare Timestamp": {
+      "main": [[{ "node": "Run Backup Script", "type": "main", "index": 0 }]]
+    },
+    "Run Backup Script": {
+      "main": [[{ "node": "Parse Output", "type": "main", "index": 0 }]]
+    },
+    "Parse Output": {
+      "main": [[{ "node": "Check Success", "type": "main", "index": 0 }]]
+    },
+    "Check Success": {
+      "main": [
+        [{ "node": "Log Success", "type": "main", "index": 0 }],
+        [{ "node": "Log Error", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "America/Bogota"
+  }
+}

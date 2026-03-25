@@ -1,0 +1,267 @@
+{
+  "name": "CH Polarizados — MySQL Backup Diario",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Cron 2am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "id": "node-cron"
+    },
+    {
+      "parameters": {
+        "command": "sh /scripts/backup-mysql-to-pg.sh"
+      },
+      "name": "Run Backup",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [420, 300],
+      "id": "node-backup"
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.first().json.stdout || '';\nconst stderr = $input.first().json.stderr || '';\n\nconst get = (key) => {\n  const match = stdout.match(new RegExp(`${key}=(.+)`));\n  return match ? match[1].trim() : '';\n};\n\nconst ok = stdout.includes('BACKUP_OK=true');\n\nreturn [{\n  json: {\n    success: ok,\n    file:     get('BACKUP_FILE'),\n    sqlFile:  get('BACKUP_SQL_FILE'),\n    size:     get('BACKUP_SIZE'),\n    timestamp: get('TIMESTAMP'),\n    error:    ok ? '' : stderr || stdout\n  }\n}];"
+      },
+      "name": "Parse Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300],
+      "id": "node-parse"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [860, 300],
+      "id": "node-if"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { file, sqlFile, size, timestamp } = $input.first().json;\nreturn [{ json: { status: 'ok', file, sqlFile, size, timestamp } }];"
+      },
+      "name": "✅ Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 180],
+      "id": "node-ok"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { error } = $input.first().json;\nreturn [{ json: { status: 'error', error, timestamp: new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' }) } }];"
+      },
+      "name": "❌ Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 420],
+      "id": "node-err"
+    },
+    {
+      "parameters": {
+        "filePath": "={{ $json.file }}"
+      },
+      "name": "Leer GZ",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [1300, 180],
+      "id": "node-read-gz"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "={{ $('✅ Success').first().json.file.split('/').pop() }}",
+        "driveId": {
+          "__rl": true,
+          "value": "MyDrive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_DRIVE_FOLDER_ID }}",
+          "mode": "id"
+        },
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "name": "Subir GZ a Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1520, 180],
+      "id": "node-drive-gz",
+      "continueOnFail": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL",
+          "name": "Google Drive — ch-polarizados"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "filePath": "={{ $('✅ Success').first().json.sqlFile }}"
+      },
+      "name": "Leer SQL",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [1740, 180],
+      "id": "node-read-sql"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "={{ $('✅ Success').first().json.sqlFile.split('/').pop() }}",
+        "driveId": {
+          "__rl": true,
+          "value": "MyDrive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_DRIVE_FOLDER_ID }}",
+          "mode": "id"
+        },
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "name": "Subir SQL a Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1960, 180],
+      "id": "node-drive-sql",
+      "continueOnFail": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL",
+          "name": "Google Drive — ch-polarizados"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('✅ Success').first().json;\nconst { file, sqlFile, size, timestamp } = s;\nreturn [{ json: { file, sqlFile, size, timestamp, cmd: `rm -f \"${file}\" \"${sqlFile}\"` } }];"
+      },
+      "name": "Preparar Cleanup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2180, 180],
+      "id": "node-prep-cleanup"
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.cmd }}"
+      },
+      "name": "Limpiar Local",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2400, 180],
+      "id": "node-cleanup"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Preparar Cleanup').first().json;\nconst message = `✅ <b>Backup completado</b>\\n\\n📁 <code>${d.file.split('/').pop()}</code>\\n📄 <code>${d.sqlFile.split('/').pop()}</code>\\n📦 ${d.size}\\n🕐 ${d.timestamp}\\n☁️ Subido a Google Drive ✓`;\nreturn [{ json: { message } }];"
+      },
+      "name": "Preparar Telegram ✅",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2620, 180],
+      "id": "node-prep-tg-ok"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "name": "Telegram ✅",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2840, 180],
+      "id": "node-tg-ok",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL_TELEGRAM",
+          "name": "Telegram — ch-polarizados"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst message = `❌ <b>Backup FALLIDO</b>\\n\\n🕐 ${d.timestamp}\\n\\n🔴 Error:\\n<code>${(d.error || 'desconocido').substring(0, 500)}</code>`;\nreturn [{ json: { message } }];"
+      },
+      "name": "Preparar Telegram ❌",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 420],
+      "id": "node-prep-tg-err"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "name": "Telegram ❌",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1520, 420],
+      "id": "node-tg-err",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL_TELEGRAM",
+          "name": "Telegram — ch-polarizados"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron 2am":          { "main": [[{ "node": "Run Backup",        "type": "main", "index": 0 }]] },
+    "Run Backup":        { "main": [[{ "node": "Parse Result",      "type": "main", "index": 0 }]] },
+    "Parse Result":      { "main": [[{ "node": "OK?",               "type": "main", "index": 0 }]] },
+    "OK?": {
+      "main": [
+        [{ "node": "✅ Success", "type": "main", "index": 0 }],
+        [{ "node": "❌ Error",   "type": "main", "index": 0 }]
+      ]
+    },
+    "✅ Success":        { "main": [[{ "node": "Leer GZ",           "type": "main", "index": 0 }]] },
+    "❌ Error":             { "main": [[{ "node": "Preparar Telegram ❌", "type": "main", "index": 0 }]] },
+    "Preparar Telegram ❌": { "main": [[{ "node": "Telegram ❌",         "type": "main", "index": 0 }]] },
+    "Leer GZ":           { "main": [[{ "node": "Subir GZ a Drive",  "type": "main", "index": 0 }]] },
+    "Subir GZ a Drive":  { "main": [[{ "node": "Leer SQL",          "type": "main", "index": 0 }]] },
+    "Leer SQL":          { "main": [[{ "node": "Subir SQL a Drive", "type": "main", "index": 0 }]] },
+    "Subir SQL a Drive": { "main": [[{ "node": "Preparar Cleanup",  "type": "main", "index": 0 }]] },
+    "Preparar Cleanup":  { "main": [[{ "node": "Limpiar Local",     "type": "main", "index": 0 }]] },
+    "Limpiar Local":        { "main": [[{ "node": "Preparar Telegram ✅", "type": "main", "index": 0 }]] },
+    "Preparar Telegram ✅": { "main": [[{ "node": "Telegram ✅",         "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "timezone": "America/Bogota"
+  }
+}
